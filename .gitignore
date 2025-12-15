@@ -3,7 +3,6 @@
 
 # Ignore .env files (environment variables)
 **/.env
-**/.env.* 
 
 # Ignore build output
 **/.next
