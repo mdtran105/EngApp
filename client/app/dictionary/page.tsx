@@ -2,8 +2,8 @@
 
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 import Navbar from "@/components/Navbar";
+import { getUserId } from "@/lib/authService";
 import { API_DOMAIN } from "@/lib/config";
-import { getUserPreferences } from "@/lib/localStorage";
 import {
 	BookOpen,
 	ChevronDown,
@@ -27,7 +27,7 @@ type RecentSearch = {
 
 interface DictionaryResponse {
 	content: string;
-	audioUrls: { us: string };
+	word: string;
 }
 
 // 100 diverse vocabulary items including words, phrasal verbs, idioms, and business terms
@@ -147,7 +147,6 @@ export default function DictionaryPage() {
 	const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([]);
 	const [showRecent, setShowRecent] = useState(true);
 	const router = useRouter();
-	const preferences = getUserPreferences();
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [displayedSearches, setDisplayedSearches] = useState<string[]>([]);
 
@@ -156,23 +155,51 @@ export default function DictionaryPage() {
 	const [isLoading, setIsLoading] = useState(false);
 	const [showResult, setShowResult] = useState(false);
 	const { speak, speaking } = useSpeechSynthesis();
+	const [userId, setUserId] = useState<string | null>(null);
 
 	useEffect(() => {
-		if (!preferences.hasCompletedOnboarding) {
-			router.push("/");
-			return;
-		}
+		// Check authentication
+		const checkAuth = async () => {
+			const { isLoggedIn } = await import("@/lib/authService");
+			if (!isLoggedIn()) {
+				router.push("/auth");
+				return;
+			}
+		};
+		checkAuth();
 
-		// Load recent searches
-		const savedSearches = localStorage.getItem(RECENT_SEARCHES_KEY);
-		if (savedSearches) {
-			setRecentSearches(JSON.parse(savedSearches));
-		}
+		// Get userId
+		getUserId().then(setUserId);
 
 		// Randomly select 5 sample searches
 		const shuffled = [...SAMPLE_SEARCHES].sort(() => 0.5 - Math.random());
 		setDisplayedSearches(shuffled.slice(0, 5));
-	}, [router, preferences.hasCompletedOnboarding]);
+	}, [router]);
+
+	// Load searched words from server
+	useEffect(() => {
+		if (!userId) return;
+
+		const loadSearchedWords = async () => {
+			try {
+				const response = await fetch(
+					`${API_DOMAIN}/api/dictionary/history/${userId}?limit=5`
+				);
+				if (response.ok) {
+					const words = await response.json();
+					const recentSearches = words.map((w: any) => ({
+						keyword: w.word,
+						timestamp: new Date(w.lastSearched),
+					}));
+					setRecentSearches(recentSearches);
+				}
+			} catch (error) {
+				console.error("Failed to load searched words:", error);
+			}
+		};
+
+		loadSearchedWords();
+	}, [userId]);
 
 	const handleSearch = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -191,20 +218,14 @@ export default function DictionaryPage() {
 		setShowResult(true);
 		setError(null);
 
-		// Save to recent searches
-		const newSearch: RecentSearch = {
-			keyword: trimmedKeyword,
-			timestamp: new Date(),
-		};
-
-		const updatedSearches = [
-			newSearch,
-			...recentSearches.filter((s) => s.keyword !== trimmedKeyword).slice(0, 4),
-		];
-		setRecentSearches(updatedSearches);
-		localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updatedSearches));
-
 		try {
+			// Ensure userId is available
+			const currentUserId = userId || (await getUserId());
+			console.log("🔍 Searching word:", {
+				keyword: trimmedKeyword,
+				userId: currentUserId,
+			});
+
 			// Fetch dictionary result
 			const response = await fetch(`${API_DOMAIN}/api/dictionary`, {
 				method: "POST",
@@ -213,6 +234,7 @@ export default function DictionaryPage() {
 				},
 				body: JSON.stringify({
 					keyword: trimmedKeyword,
+					userId: currentUserId,
 				}),
 			});
 
@@ -222,6 +244,19 @@ export default function DictionaryPage() {
 
 			const data = await response.json();
 			setResult(data);
+
+			// Update recent searches locally
+			const newSearch: RecentSearch = {
+				keyword: trimmedKeyword,
+				timestamp: new Date(),
+			};
+			const updatedSearches = [
+				newSearch,
+				...recentSearches
+					.filter((s) => s.keyword !== trimmedKeyword)
+					.slice(0, 4),
+			];
+			setRecentSearches(updatedSearches);
 
 			// Scroll to result section smoothly
 			setTimeout(() => {
@@ -249,6 +284,9 @@ export default function DictionaryPage() {
 		setError(null);
 
 		try {
+			// Ensure userId is available
+			const currentUserId = userId || (await getUserId());
+
 			const response = await fetch(`${API_DOMAIN}/api/dictionary`, {
 				method: "POST",
 				headers: {
@@ -256,6 +294,7 @@ export default function DictionaryPage() {
 				},
 				body: JSON.stringify({
 					keyword: search.keyword,
+					userId: currentUserId,
 				}),
 			});
 
@@ -292,12 +331,18 @@ export default function DictionaryPage() {
 		setError(null);
 
 		try {
+			// Ensure userId is available
+			const currentUserId = userId || (await getUserId());
+
 			const response = await fetch(`${API_DOMAIN}/api/dictionary`, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify({ keyword: word }),
+				body: JSON.stringify({
+					keyword: word,
+					userId: currentUserId,
+				}),
 			});
 
 			if (!response.ok) {
@@ -418,21 +463,6 @@ export default function DictionaryPage() {
 								</button>
 							</div>
 
-							{/* {showContextInput && (
-								<div className="animate-fadeIn">
-									<textarea
-										value={context}
-										onChange={(e) => {
-											setError(null);
-											setContext(e.target.value);
-										}}
-										className="w-full rounded-xl border-2 border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:border-blue-400 dark:focus:ring-blue-400/10"
-										placeholder="Thêm ngữ cảnh để nhận kết quả chính xác hơn. Ngữ cảnh là đoạn văn bản chứa từ khóa cần tra cứu."
-										rows={3}
-									/>
-								</div>
-							)} */}
-
 							{/* Sample Searches - Only show when no result */}
 							{!showResult && (
 								<div className="rounded-xl bg-white p-4 shadow-md dark:bg-slate-800">
@@ -464,7 +494,36 @@ export default function DictionaryPage() {
 									<h2 className="text-2xl font-bold text-slate-900 dark:text-white">
 										Kết quả tra cứu
 									</h2>
-									<div className="flex items-center gap-2">
+									<button
+										onClick={() => {
+											setShowResult(false);
+											setResult(null);
+											setError(null);
+										}}
+										className="flex items-center cursor-pointer space-x-2 rounded-lg bg-white/80 px-4 py-2 text-slate-600 shadow-md backdrop-blur-sm transition-all hover:bg-white hover:text-slate-900 dark:bg-slate-700/80 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-white"
+										title="Đóng"
+									>
+										<X className="h-5 w-5" />
+									</button>
+								</div>
+
+								{isLoading ? (
+									<div className="flex flex-col items-center justify-center space-y-4 py-12">
+										<div className="relative h-12 w-12">
+											<div className="absolute inset-0 animate-ping rounded-full bg-blue-400 opacity-25"></div>
+											<div className="relative flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-cyan-400">
+												<Search className="h-6 w-6 text-white" />
+											</div>
+										</div>
+										<p className="text-slate-600 dark:text-slate-400">
+											Đang tra cứu...
+										</p>
+									</div>
+								) : result ? (
+									<div className="animate-fadeIn">
+										<MarkdownRenderer noSplit>
+											{`# ` + result.word}
+										</MarkdownRenderer>
 										{result && (
 											<button
 												onClick={() => keyword && speak({ text: keyword })}
@@ -482,34 +541,6 @@ export default function DictionaryPage() {
 												/>
 											</button>
 										)}
-										<button
-											onClick={() => {
-												setShowResult(false);
-												setResult(null);
-												setError(null);
-											}}
-											className="flex items-center cursor-pointer space-x-2 rounded-lg bg-white/80 px-4 py-2 text-slate-600 shadow-md backdrop-blur-sm transition-all hover:bg-white hover:text-slate-900 dark:bg-slate-700/80 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-white"
-											title="Đóng"
-										>
-											<X className="h-5 w-5" />
-										</button>
-									</div>
-								</div>
-
-								{isLoading ? (
-									<div className="flex flex-col items-center justify-center space-y-4 py-12">
-										<div className="relative h-12 w-12">
-											<div className="absolute inset-0 animate-ping rounded-full bg-blue-400 opacity-25"></div>
-											<div className="relative flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-cyan-400">
-												<Search className="h-6 w-6 text-white" />
-											</div>
-										</div>
-										<p className="text-slate-600 dark:text-slate-400">
-											Đang tra cứu...
-										</p>
-									</div>
-								) : result ? (
-									<div className="animate-fadeIn">
 										<MarkdownRenderer noSplit>
 											{result.content}
 										</MarkdownRenderer>

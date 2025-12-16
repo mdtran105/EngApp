@@ -2,10 +2,16 @@
 
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { useTheme } from "@/contexts/ThemeContext";
-import { LogOut, Menu, Moon, Sun, UserCircle, X } from "lucide-react";
+import {
+	getCurrentUser,
+	isLoggedIn,
+	logout,
+	type User,
+} from "@/lib/authService";
+import { LogIn, LogOut, Menu, Moon, Sun, UserCircle, X } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import UserProfileDialog from "./UserProfileDialog";
 
 export default function Navbar() {
@@ -14,9 +20,20 @@ export default function Navbar() {
 	const [showMobileMenu, setShowMobileMenu] = useState(false);
 	const [showLogoutDialog, setShowLogoutDialog] = useState(false);
 	const [showProfileDialog, setShowProfileDialog] = useState(false);
+	const [user, setUser] = useState<User | null>(null);
+	const [loggedIn, setLoggedIn] = useState(false);
+
+	useEffect(() => {
+		setLoggedIn(isLoggedIn());
+		if (isLoggedIn()) {
+			getCurrentUser().then(setUser);
+		}
+	}, []);
 
 	const handleLogout = () => {
-		localStorage.clear();
+		logout();
+		setUser(null);
+		setLoggedIn(false);
 		router.push("/");
 	};
 
@@ -73,16 +90,29 @@ export default function Navbar() {
 									)}
 								</button>
 
-								<button
-									onClick={() => {
-										setShowLogoutDialog(true);
-										setShowMobileMenu(false);
-									}}
-									className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-linear-to-r from-red-500 to-pink-500 text-white hover:from-red-600 hover:to-pink-600 transition-all duration-200 whitespace-nowrap"
-								>
-									<LogOut className="h-4 w-4" />
-									<span className="text-xs font-medium">Đăng xuất</span>
-								</button>
+								{loggedIn ? (
+									<button
+										onClick={() => {
+											setShowLogoutDialog(true);
+											setShowMobileMenu(false);
+										}}
+										className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-linear-to-r from-red-500 to-pink-500 text-white hover:from-red-600 hover:to-pink-600 transition-all duration-200 whitespace-nowrap"
+									>
+										<LogOut className="h-4 w-4" />
+										<span className="text-xs font-medium">Đăng xuất</span>
+									</button>
+								) : (
+									<button
+										onClick={() => {
+											router.push("/auth");
+											setShowMobileMenu(false);
+										}}
+										className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-linear-to-r from-teal-500 to-emerald-500 text-white hover:from-teal-600 hover:to-emerald-600 transition-all duration-200 whitespace-nowrap"
+									>
+										<LogIn className="h-4 w-4" />
+										<span className="text-xs font-medium">Đăng nhập</span>
+									</button>
+								)}
 							</div>
 
 							{/* Hamburger Menu Button */}

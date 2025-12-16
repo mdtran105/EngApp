@@ -1,14 +1,15 @@
-import { getUserPreferences } from "@/lib/localStorage";
+import { isLoggedIn } from "@/lib/authService";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 export const useCheckOnboard = () => {
-  const router = useRouter();
-  const preferences = getUserPreferences();
-  useEffect(() => {
-    if (!preferences.hasCompletedOnboarding) {
-      router.push("/");
-      return;
-    }
-  }, [router, preferences.hasCompletedOnboarding]);
+	const router = useRouter();
+
+	useEffect(() => {
+		// Redirect to auth if not logged in
+		if (!isLoggedIn()) {
+			router.push("/auth");
+			return;
+		}
+	}, [router]);
 };

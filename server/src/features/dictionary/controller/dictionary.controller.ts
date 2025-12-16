@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { Request, Response } from 'express'
 import { HTTP_STATUS } from '~/constants/http'
+import prisma from '~/lib/prisma'
 import genAI from '../../utils'
 
 const prompt = ({ keyword }: { keyword: string }) => `
@@ -41,12 +42,10 @@ Hãy giải thích nghĩa của từ "${keyword}".
 ### 5. Yêu cầu ngôn ngữ  
 - **Luôn trình bày hoàn toàn bằng tiếng Việt**. Không dùng từ tiếng Anh trừ khi là **thuật ngữ chuyên ngành không có tương đương**.  
 
-### 6. Cấu trúc phản hồi mẫu (áp dụng khi phân tích từ/ngữ)  
-1. **Định nghĩa**  
-2. **Phát âm** (nếu có)  
-3. **Loại từ**  
-4. **Nghĩa tiếng Việt** (chia theo từng nghĩa nếu có)  
-5. **Ví dụ minh họa**  
+### 6. Cấu trúc phản hồi mẫu (áp dụng khi phân tích từ/ngữ)   
+1. **Phát âm** (nếu có)  
+2. **Loại từ và Bản dịch**  (chia theo từng nghĩa nếu có)  
+3. **Ví dụ minh họa**  
 <INSTRUCTIONS> 
 
 ---
@@ -72,32 +71,22 @@ Hãy giải thích nghĩa của từ "${keyword}".
 ---
 
 <OUTPUT_EXAMPLE>
-# **Tiêu đề**: Là từ/cụm từ cần tra cứu viết ở dạng **in hoa và in đậm**
-
-## **1. PHÁT ÂM**  
+## **1. PHIÊN ÂM**  
 - **Phiên âm IPA** (Anh - Mỹ).  
 - **Trọng âm & cách đọc chuẩn**.  
 
 🔹 *Ví dụ:*  
 **Từ:** **""schedule""**  
 - **IPA:** */ˈskedʒ.uːl/* (Mỹ) | */ˈʃed.juːl/* (Anh)  
-- **Trọng âm:** **SCHED-ule** (nhấn âm đầu tiên)  
+- **Trọng âm:** **SCHED-ule** (nhấn âm đầu tiên)
 
-## **2. GIẢI NGHĨA**  
-- **Nghĩa phổ biến nhất**, kèm **ví dụ thực tế**.  
-- **Nếu có câu ví dụ của người dùng**, ưu tiên giải thích **nghĩa phù hợp nhất**.  
+## **2. LOẠI TỪ VÀ DỊCH NGHĨA**
+- **Loại từ** (danh từ, động từ, tính từ, trạng từ, giới từ, liên từ, thán từ...).  
+- **Bản dịch chi tiết**, chia theo từng nghĩa nếu có.
 
-🔹 *Ví dụ:*  
-**Từ:** **""bank""**  
-- **Nghĩa 1 (danh từ, phổ biến nhất):** Ngân hàng.  
-  - *Ví dụ:* *I went to the bank to withdraw money.* → **Tôi đến ngân hàng để rút tiền**.  
-- **Nghĩa 2 (danh từ, khác):** Bờ sông, bờ hồ.  
-  - *Ví dụ:* *They had a picnic by the river bank.* → **Họ tổ chức dã ngoại bên bờ sông**.  
-
-## **3.  CỤM TỪ VÀ THÀNH NGỮ LIÊN QUAN**  
+## **3. VÍ DỤ**  
 - **Các cụm từ phổ biến có chứa từ đó**.  
 - **Giải thích nghĩa & cách sử dụng**.  
-- **Nếu cần, cung cấp bảng so sánh với các từ/cụm từ/thành ngữ tương tự (cheat sheet) để giúp người dùng hiểu rõ hơn và ứng dụng tốt hơn**.  
 
 🔹 *Ví dụ:*  
 **Từ:** **""piece""**  
@@ -118,7 +107,7 @@ hãy loại bỏ các dấu * trong câu trả lời
 
 class DictionaryController {
   public async searchDictionary(req: Request, res: Response) {
-    const { keyword } = req.body
+    const { keyword, userId } = req.body
 
     if (!keyword) {
       res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Missing keyword' })
@@ -128,7 +117,36 @@ class DictionaryController {
         model: 'gemini-2.0-flash',
         contents: prompt(req.body)
       })
-      const content = result.text
+      const content = result.text || ''
+
+      // Lưu từ đã tra vào database nếu có userId
+      if (userId && content) {
+        try {
+          await prisma.searchedWord.upsert({
+            where: {
+              userId_word: {
+                userId,
+                word: keyword.toLowerCase().trim()
+              }
+            },
+            update: {
+              definition: content,
+              searchCount: { increment: 1 },
+              lastSearched: new Date()
+            },
+            create: {
+              userId,
+              word: keyword.toLowerCase().trim(),
+              definition: content,
+              searchCount: 1
+            }
+          })
+        } catch (saveError) {
+          console.error('❌ Failed to save searched word:', saveError)
+        }
+      } else {
+        console.log('⚠️ Skipping save - no userId provided')
+      }
 
       const response = {
         word: keyword,
@@ -174,6 +192,65 @@ class DictionaryController {
     } catch (error) {
       console.error(error)
       res.status(500).json({ error: 'Lỗi khi dịch văn bản' })
+    }
+  }
+
+  // Get searched words history for user
+  public async getSearchedWords(req: Request, res: Response) {
+    const { userId } = req.params
+    const { limit = 50 } = req.query
+
+    try {
+      const words = await prisma.searchedWord.findMany({
+        where: { userId },
+        orderBy: { lastSearched: 'desc' },
+        take: Number(limit)
+      })
+
+      res.status(HTTP_STATUS.OK).json(words)
+    } catch (error) {
+      console.error(error)
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to get searched words' })
+    }
+  }
+
+  // Get most searched words for user
+  public async getMostSearchedWords(req: Request, res: Response) {
+    const { userId } = req.params
+    const { limit = 20 } = req.query
+
+    try {
+      const words = await prisma.searchedWord.findMany({
+        where: { userId },
+        orderBy: { searchCount: 'desc' },
+        take: Number(limit)
+      })
+
+      res.status(HTTP_STATUS.OK).json(words)
+    } catch (error) {
+      console.error(error)
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to get most searched words' })
+    }
+  }
+
+  // Delete a searched word
+  public async deleteSearchedWord(req: Request, res: Response) {
+    const { userId, word } = req.params
+
+    try {
+      await prisma.searchedWord.delete({
+        where: {
+          userId_word: {
+            userId,
+            word: word.toLowerCase().trim()
+          }
+        }
+      })
+
+      res.status(HTTP_STATUS.OK).json({ message: 'Searched word deleted' })
+    } catch (error) {
+      console.error(error)
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to delete searched word' })
     }
   }
 }

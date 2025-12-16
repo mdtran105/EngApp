@@ -8,6 +8,15 @@ const chatRoute = express.Router()
 // chatRoute.use(verifyUser)
 // chatRoute.use(preventInActiveUser)
 
+// Chat endpoints
 chatRoute.post('/', chatController.chatGemini)
 chatRoute.post('/whisper', upload.single('file'), chatController.whisper)
+
+// Chat history
+chatRoute.get('/history/:userId', chatController.getChatHistory)
+chatRoute.delete('/history/:userId', chatController.deleteChatHistory)
+
+// User stats
+chatRoute.get('/stats/:userId', chatController.getUserStats)
+
 export default chatRoute

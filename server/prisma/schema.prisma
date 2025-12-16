@@ -1,0 +1,52 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String   @id @default(uuid())
+  name           String
+  email          String?  @unique
+  password       String? // Hashed password for authentication
+  level          String   @default("beginner") // beginner, intermediate, advanced
+  isAnonymous    Boolean  @default(false) // Track if user is anonymous or registered
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  chatMessages  ChatMessage[]
+  searchedWords SearchedWord[]
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  content   String
+  role      String // 'user' or 'assistant'
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId String? // Optional: để nhóm theo session chat
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([sessionId])
+}
+
+model SearchedWord {
+  id           String   @id @default(uuid())
+  word         String
+  definition   String?
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  searchCount  Int      @default(1) // Số lần tra từ này
+  lastSearched DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, word]) // Mỗi user chỉ có 1 record cho mỗi từ
+  @@index([userId, lastSearched])
+}

@@ -12,7 +12,7 @@ export const features = [
 	},
 	{
 		title: "GIAO TIẾP VỚI AI",
-		englishTitle: "Trò chuyện với AI",
+		englishTitle: "Trò chuyện với trợ lý ảo",
 		description:
 			"Tham gia các cuộc trò chuyện tự nhiên với AI về nhiều chủ đề khác nhau.",
 		icon: Speech,

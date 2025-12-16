@@ -1,16 +1,6 @@
 import { ChatResponse, Conversation, Message } from "@/app/chat/types";
+import { getCurrentUser, getUserId } from "@/lib/authService";
 import { API_DOMAIN } from "@/lib/config";
-import { CHAT_HISTORY_KEY } from "@/lib/constants";
-import {
-	clearHistoryMessage,
-	deleteConversation,
-	generateConversationTitle,
-	getConversations,
-	getCurrentConversationId,
-	getUserPreferences,
-	saveConversation,
-	setCurrentConversationId as saveCurrentConversationId,
-} from "@/lib/localStorage";
 import { useCallback, useEffect, useState } from "react";
 
 export const useMessage = () => {
@@ -21,118 +11,127 @@ export const useMessage = () => {
 	);
 	const [hasRestoredMessages, setHasRestoredMessages] = useState(false);
 	const [isMounted, setIsMounted] = useState(false);
-	const preferences = getUserPreferences();
+	const [userName, setUserName] = useState("User");
 	const [isProcessing, setIsProcessing] = useState(false);
 	const [isContinuousMode, setIsContinuousMode] = useState(false);
 	const [lastNewMessageId, setLastNewMessageId] = useState<string | null>(null);
+	const [userId, setUserId] = useState<string | null>(null);
 
-	// Detect when component is mounted (client-side only)
+	// Detect when component is mounted and get userId
 	useEffect(() => {
 		setIsMounted(true);
-	}, []);
-
-	// Load conversations on mount
-	useEffect(() => {
-		if (!isMounted) return;
-
-		const loadedConversations = getConversations();
-		setConversations(loadedConversations);
-
-		const savedCurrentId = getCurrentConversationId();
-		if (
-			savedCurrentId &&
-			loadedConversations.find((c) => c.id === savedCurrentId)
-		) {
-			setCurrentConvId(savedCurrentId);
-		} else if (loadedConversations.length > 0) {
-			// If no saved ID but conversations exist, use the most recent one
-			const mostRecent = loadedConversations.sort(
-				(a, b) =>
-					new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-			)[0];
-			setCurrentConvId(mostRecent.id);
-			saveCurrentConversationId(mostRecent.id);
-		} else {
-			// If no conversations exist, will create one
-			setCurrentConvId(null);
-		}
-	}, [isMounted]);
-
-	const loadInitMessage = useCallback(() => {
-		if (currentConversationId) {
-			// Load messages from current conversation
-			setConversations((prevConversations) => {
-				const conversation = prevConversations.find(
-					(c) => c.id === currentConversationId
-				);
-				if (conversation) {
-					setMessages(conversation.messages);
-					setHasRestoredMessages(true);
-				}
-				return prevConversations;
-			});
-			return;
-		}
-
-		// Fallback: try to load from old CHAT_HISTORY_KEY for backward compatibility
-		const savedMessages = localStorage.getItem(CHAT_HISTORY_KEY);
-		if (savedMessages && !hasRestoredMessages) {
-			try {
-				const parsedMessages = JSON.parse(savedMessages);
-				// Convert string timestamps back to Date objects
-				const messagesWithDates: Message[] = parsedMessages.map(
-					(msg: Omit<Message, "timestamp"> & { timestamp: string }) => ({
-						...msg,
-						timestamp: new Date(msg.timestamp),
-					})
-				);
-				setMessages(messagesWithDates);
-				setHasRestoredMessages(true);
-			} catch (error) {
-				console.error("Error loading chat history:", error);
+		getUserId().then(setUserId);
+		// Get user name from authenticated user
+		getCurrentUser().then((user) => {
+			if (user) {
+				setUserName(user.name);
 			}
-		}
-	}, [currentConversationId, hasRestoredMessages]);
-
-	useEffect(() => {
-		if (!isMounted) return;
-		if (currentConversationId !== null) {
-			loadInitMessage();
-		}
-	}, [isMounted, currentConversationId, loadInitMessage]);
-
-	// Helper function to check if conversation has real content (not just welcome message)
-	const hasRealContent = useCallback((messages: Message[]) => {
-		// Need at least 2 messages: 1 user + 1 ai response
-		if (messages.length < 2) return false;
-
-		// Check if there's at least one user message
-		const hasUserMessage = messages.some((msg) => msg.sender === "user");
-
-		// Check if there's at least one AI response that's not the welcome message
-		const hasRealAiResponse = messages.some(
-			(msg) => msg.sender === "ai" && !msg.id.startsWith("welcome-")
-		);
-
-		return hasUserMessage && hasRealAiResponse;
+		});
 	}, []);
 
-	// Auto-create first conversation if none exist
+	// Load chat history from server on mount
 	useEffect(() => {
-		if (!isMounted) return;
+		if (!isMounted || !userId) return;
 
-		if (
-			conversations.length === 0 &&
-			!currentConversationId &&
-			!hasRestoredMessages
-		) {
+		const loadChatHistory = async () => {
+			try {
+				const response = await fetch(
+					`${API_DOMAIN}/api/chat/history/${userId}?limit=100`
+				);
+
+				if (!response.ok) {
+					throw new Error("Failed to load chat history");
+				}
+
+				const historyMessages = await response.json();
+
+				// Group messages by sessionId
+				const conversationsMap = new Map<string, Message[]>();
+
+				historyMessages.forEach((msg: any) => {
+					const sessionId = msg.sessionId || "default";
+					if (!conversationsMap.has(sessionId)) {
+						conversationsMap.set(sessionId, []);
+					}
+
+					conversationsMap.get(sessionId)!.push({
+						id: msg.id,
+						content: msg.content,
+						sender: msg.role === "user" ? "user" : "ai",
+						timestamp: new Date(msg.createdAt),
+					});
+				});
+
+				// Convert to conversations array
+				const loadedConversations: Conversation[] = Array.from(
+					conversationsMap.entries()
+				).map(([sessionId, msgs]) => {
+					// Sort messages by timestamp (oldest first)
+					const sortedMsgs = msgs.sort(
+						(a, b) => a.timestamp.getTime() - b.timestamp.getTime()
+					);
+
+					// Generate conversation title from first user message
+					const firstUserMsg = sortedMsgs.find((m) => m.sender === "user");
+					let title = "Cuộc trò chuyện mới";
+
+					if (firstUserMsg) {
+						// Take first 30 characters of first user message
+						const preview = firstUserMsg.content.substring(0, 30);
+						title = preview + (firstUserMsg.content.length > 30 ? "..." : "");
+					} else {
+						// Fallback to date/time
+						const date = new Date(sortedMsgs[0]?.timestamp);
+						title = `Chat ${date.toLocaleDateString(
+							"vi-VN"
+						)} ${date.toLocaleTimeString("vi-VN", {
+							hour: "2-digit",
+							minute: "2-digit",
+						})}`;
+					}
+
+					return {
+						id: sessionId,
+						title,
+						messages: sortedMsgs,
+						createdAt: sortedMsgs[0]?.timestamp || new Date(),
+						updatedAt:
+							sortedMsgs[sortedMsgs.length - 1]?.timestamp || new Date(),
+					};
+				});
+
+				if (loadedConversations.length > 0) {
+					// Sort conversations by updatedAt (most recent last)
+					const sortedConversations = loadedConversations.sort(
+						(a, b) => a.updatedAt.getTime() - b.updatedAt.getTime()
+					);
+
+					// Load the most recent conversation
+					const mostRecent =
+						sortedConversations[sortedConversations.length - 1];
+					setCurrentConvId(mostRecent.id);
+					setConversations(sortedConversations);
+					setMessages(mostRecent.messages);
+					setHasRestoredMessages(true);
+				} else {
+					// No history, create first conversation
+					createFirstConversation();
+				}
+			} catch (error) {
+				console.error("Failed to load chat history:", error);
+				// On error, create first conversation
+				createFirstConversation();
+			}
+		};
+
+		const createFirstConversation = () => {
 			const newConversation: Conversation = {
 				id: Date.now().toString(),
 				title: "Cuộc trò chuyện mới",
 				messages: [
 					{
 						id: "welcome-" + Date.now(),
-						content: `Hello ${preferences.fullName}! I am a virtual assistant.\n\nI am here to assist you with your language learning journey. Feel free to ask me anything to practice speaking!`,
+						content: `Hello ${userName}! I am a virtual assistant.\n\nI am here to assist you with your language learning journey. Feel free to ask me anything to practice speaking!`,
 						sender: "ai",
 						timestamp: new Date(),
 					},
@@ -141,76 +140,38 @@ export const useMessage = () => {
 				updatedAt: new Date(),
 			};
 
-			// Don't save to localStorage yet - only when user actually chats
-			saveCurrentConversationId(newConversation.id);
 			setCurrentConvId(newConversation.id);
-			setConversations((prev) => [...prev, newConversation]);
+			setConversations([newConversation]);
 			setMessages(newConversation.messages);
 			setHasRestoredMessages(true);
-		}
-	}, [
-		isMounted,
-		conversations.length,
-		currentConversationId,
-		hasRestoredMessages,
-		preferences.fullName,
-	]);
+		};
 
-	// Save current conversation when messages change
-	useEffect(() => {
-		if (hasRestoredMessages && messages.length > 0 && currentConversationId) {
-			const realContent = hasRealContent(messages);
+		loadChatHistory();
+	}, [isMounted, userId, userName]);
 
-			// Only save if conversation has real content (not just welcome message)
-			if (!realContent) {
-				// Update in memory only, don't persist to localStorage
-				setConversations((prev) => {
-					const conversation = prev.find((c) => c.id === currentConversationId);
-					if (conversation) {
-						const updatedConversation: Conversation = {
-							...conversation,
-							messages,
-							updatedAt: new Date(),
-						};
-						return prev.map((c) =>
-							c.id === currentConversationId ? updatedConversation : c
-						);
-					}
-					return prev;
-				});
-				return;
-			}
+	const handleClearChat = async () => {
+		if (!userId || !currentConversationId) return;
 
-			// Has real content - save to localStorage
-			setConversations((prev) => {
-				const conversation = prev.find((c) => c.id === currentConversationId);
-				if (conversation) {
-					const updatedConversation: Conversation = {
-						...conversation,
-						messages,
-						updatedAt: new Date(),
-						title:
-							conversation.title === "Cuộc trò chuyện mới"
-								? generateConversationTitle(messages)
-								: conversation.title,
-					};
-					saveConversation(updatedConversation);
-					return prev.map((c) =>
-						c.id === currentConversationId ? updatedConversation : c
-					);
-				}
-				return prev;
+		try {
+			// Delete chat history from server
+			await fetch(`${API_DOMAIN}/api/chat/history/${userId}`, {
+				method: "DELETE",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ sessionId: currentConversationId }),
 			});
-			// Also save to old key for backward compatibility
-			localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(messages));
-		}
-	}, [messages, hasRestoredMessages, currentConversationId, hasRealContent]);
 
-	const handleClearChat = () => {
-		setMessages([]);
-		// setCurrentSuggestions([]);
-		setHasRestoredMessages(false);
-		clearHistoryMessage();
+			// Reset local state
+			setMessages([
+				{
+					id: "welcome-" + Date.now(),
+					content: `Hello ${userName}! I am a virtual assistant.\n\nI am here to assist you with your language learning journey. Feel free to ask me anything to practice speaking!`,
+					sender: "ai",
+					timestamp: new Date(),
+				},
+			]);
+		} catch (error) {
+			console.error("Failed to clear chat:", error);
+		}
 	};
 
 	const createNewConversation = useCallback(() => {
@@ -220,7 +181,7 @@ export const useMessage = () => {
 			messages: [
 				{
 					id: "welcome-" + Date.now(),
-					content: `Hello ${preferences.fullName}! I am a virtual assistant.\n\nI am here to assist you with your language learning journey. Feel free to ask me anything to practice speaking!`,
+					content: `Hello ${userName}! I am a virtual assistant.\n\nI am here to assist you with your language learning journey. Feel free to ask me anything to practice speaking!`,
 					sender: "ai",
 					timestamp: new Date(),
 				},
@@ -229,37 +190,40 @@ export const useMessage = () => {
 			updatedAt: new Date(),
 		};
 
-		// Don't save to localStorage yet - only in memory
-		// Will save when user actually starts chatting
-		saveCurrentConversationId(newConversation.id);
 		setCurrentConvId(newConversation.id);
 		setConversations((prev) => [...prev, newConversation]);
 		setMessages(newConversation.messages);
 		setHasRestoredMessages(true);
 		setLastNewMessageId(null);
-	}, [preferences]);
+	}, [userName]);
 
-	const clearAllConversations = useCallback(() => {
-		// Clear all conversations from localStorage
-		localStorage.removeItem("conversations");
-		localStorage.removeItem("current-conversation-id");
-		clearHistoryMessage();
+	const clearAllConversations = useCallback(async () => {
+		if (!userId) return;
 
-		// Reset state
-		setConversations([]);
-		setCurrentConvId(null);
-		setMessages([]);
-		setHasRestoredMessages(false);
+		try {
+			// Clear all chat history from server
+			await fetch(`${API_DOMAIN}/api/chat/history/${userId}`, {
+				method: "DELETE",
+				headers: { "Content-Type": "application/json" },
+			});
 
-		// Create a new conversation
-		createNewConversation();
-	}, [createNewConversation]);
+			// Reset state
+			setConversations([]);
+			setCurrentConvId(null);
+			setMessages([]);
+			setHasRestoredMessages(false);
+
+			// Create a new conversation
+			createNewConversation();
+		} catch (error) {
+			console.error("Failed to clear all conversations:", error);
+		}
+	}, [userId, createNewConversation]);
 
 	const switchConversation = useCallback(
 		(conversationId: string) => {
 			const conversation = conversations.find((c) => c.id === conversationId);
 			if (conversation) {
-				saveCurrentConversationId(conversationId);
 				setCurrentConvId(conversationId);
 				setMessages(conversation.messages);
 				setHasRestoredMessages(true);
@@ -270,20 +234,38 @@ export const useMessage = () => {
 	);
 
 	const removeConversation = useCallback(
-		(conversationId: string) => {
-			deleteConversation(conversationId);
-			setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+		async (conversationId: string) => {
+			if (!userId) return;
 
-			// If deleting current conversation, create a new one
-			if (conversationId === currentConversationId) {
-				createNewConversation();
+			try {
+				// Delete from server
+				await fetch(`${API_DOMAIN}/api/chat/history/${userId}`, {
+					method: "DELETE",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ sessionId: conversationId }),
+				});
+
+				setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+
+				// If deleting current conversation, create a new one
+				if (conversationId === currentConversationId) {
+					createNewConversation();
+				}
+			} catch (error) {
+				console.error("Failed to remove conversation:", error);
 			}
 		},
-		[currentConversationId, createNewConversation]
+		[userId, currentConversationId, createNewConversation]
 	);
 
 	const handleSendMessage = useCallback(
 		async (message: string, transcriptApi: string) => {
+			// Ensure userId is available
+			if (!userId) {
+				console.error("userId is not available");
+				return;
+			}
+
 			setIsProcessing(true);
 			const userMessage: Message = {
 				id: Date.now().toString(),
@@ -334,7 +316,11 @@ export const useMessage = () => {
 				const response = await fetch(url.toString(), {
 					method: "POST",
 					headers,
-					body: JSON.stringify({ messages: conversationHistory }),
+					body: JSON.stringify({
+						messages: conversationHistory,
+						userId: userId,
+						sessionId: currentConversationId,
+					}),
 				});
 
 				if (!response.ok) {
@@ -368,7 +354,7 @@ export const useMessage = () => {
 				setIsProcessing(false);
 			}
 		},
-		[]
+		[userId, currentConversationId, messages]
 	);
 
 	return {

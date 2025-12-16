@@ -2,14 +2,57 @@
 
 import Navbar from "@/components/Navbar";
 import { useCheckOnboard } from "@/hooks/useCheckOnboard";
-import { getUserPreferences } from "@/lib/localStorage";
+import { getCurrentUser } from "@/lib/authService";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { features } from "./constant";
+
+interface UserStats {
+	wordsLearned: number;
+	conversations: number;
+	streak: number;
+}
 
 export default function Dashboard() {
 	const router = useRouter();
 	useCheckOnboard();
-	const preferences = getUserPreferences();
+	const [userName, setUserName] = useState("User");
+	const [stats, setStats] = useState<UserStats>({
+		wordsLearned: 0,
+		conversations: 0,
+		streak: 0,
+	});
+	const [loadingStats, setLoadingStats] = useState(true);
+
+	useEffect(() => {
+		const loadUserData = async () => {
+			const user = await getCurrentUser();
+			if (user) {
+				setUserName(user.name);
+
+				// Fetch user stats
+				try {
+					const { getUserId } = await import("@/lib/authService");
+					const userId = await getUserId();
+					const { API_DOMAIN } = await import("@/lib/config");
+
+					const response = await fetch(
+						`${API_DOMAIN}/api/chat/stats/${userId}`
+					);
+					if (response.ok) {
+						const statsData = await response.json();
+						setStats(statsData);
+					}
+				} catch (error) {
+					console.error("Failed to load stats:", error);
+				} finally {
+					setLoadingStats(false);
+				}
+			}
+		};
+
+		loadUserData();
+	}, []);
 	return (
 		<div className="min-h-screen relative flex overflow-hidden bg-linear-to-br from-teal-50/95 via-emerald-50/98 to-cyan-100/95 dark:from-slate-950/95 dark:via-teal-900/40 dark:to-slate-950/95 transition-all duration-1000">
 			{/* Decorative blobs */}
@@ -66,7 +109,7 @@ export default function Dashboard() {
 						</div>
 						<div className="flex-1 min-w-0">
 							<p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
-								{preferences?.fullName || "Người dùng"}
+								{userName}
 							</p>
 							<p className="text-xs text-slate-500 dark:text-slate-400">
 								Intermediate
@@ -139,13 +182,21 @@ export default function Dashboard() {
 						<div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
 							<div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl p-6 border-2 border-teal-200/40 dark:border-teal-700/30 shadow-lg">
 								<div className="text-3xl font-bold text-teal-600 dark:text-teal-400 mb-2">
-									10
+									{loadingStats ? (
+										<div className="h-9 w-16 bg-teal-200 dark:bg-teal-800 animate-pulse rounded"></div>
+									) : (
+										stats.wordsLearned
+									)}
 								</div>
 								<p className="text-slate-600 dark:text-slate-400">Từ đã học</p>
 							</div>
 							<div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl p-6 border-2 border-emerald-200/40 dark:border-emerald-700/30 shadow-lg">
 								<div className="text-3xl font-bold text-emerald-600 dark:text-emerald-400 mb-2">
-									3
+									{loadingStats ? (
+										<div className="h-9 w-16 bg-emerald-200 dark:bg-emerald-800 animate-pulse rounded"></div>
+									) : (
+										stats.conversations
+									)}
 								</div>
 								<p className="text-slate-600 dark:text-slate-400">
 									Cuộc trò chuyện
@@ -153,7 +204,11 @@ export default function Dashboard() {
 							</div>
 							<div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl p-6 border-2 border-cyan-200/40 dark:border-cyan-700/30 shadow-lg">
 								<div className="text-3xl font-bold text-cyan-600 dark:text-cyan-400 mb-2">
-									2
+									{loadingStats ? (
+										<div className="h-9 w-16 bg-cyan-200 dark:bg-cyan-800 animate-pulse rounded"></div>
+									) : (
+										stats.streak
+									)}
 								</div>
 								<p className="text-slate-600 dark:text-slate-400">
 									Ngày liên tục

@@ -34,9 +34,9 @@ interface CodeProps {
 const components = (noSplit: boolean) => ({
 	h1: ({ children }: ComponentProps) => (
 		<h1
-			className="text-3xl lg:text-4xl font-black py-3 bg-gradient-to-r from-purple-600 via-pink-500 to-blue-500 bg-clip-text text-transparent relative
-    after:content-[''] after:absolute after:bottom-0.5 after:left-0 after:w-full after:h-0.5 after:bg-gradient-to-r after:from-purple-600 after:via-pink-500 after:to-blue-500 after:rounded-full after:opacity-75
-    hover:scale-100 transition-transform duration-300"
+			className="text-3xl lg:text-4xl font-black py-3 bg-linear-to-r from-green-400 via-emerald-500 to-teal-500 bg-clip-text text-transparent relative
+  after:content-[''] after:absolute after:bottom-0.5 after:left-0 after:w-full after:h-0.5 after:bg-linear-to-r after:from-green-600 after:via-emerald-500 after:to-teal-500 after:rounded-full after:opacity-75
+  hover:scale-100 transition-transform duration-300"
 		>
 			{noSplit ? children : renderChildComponent(children)}
 		</h1>

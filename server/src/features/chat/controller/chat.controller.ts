@@ -1,12 +1,13 @@
-import axios from 'axios'
-import 'dotenv/config'
-import { Request, Response } from 'express'
-import fs from 'fs'
-import { File as NodeFile } from 'node:buffer'
-import OpenAI from 'openai'
-import { HTTP_STATUS } from '~/constants/http'
-import genAI from '../../utils'
-;(globalThis as any).File = NodeFile
+import axios from 'axios';
+import 'dotenv/config';
+import { Request, Response } from 'express';
+import fs from 'fs';
+import { File as NodeFile } from 'node:buffer';
+import OpenAI from 'openai';
+import { HTTP_STATUS } from '~/constants/http';
+import prisma from '~/lib/prisma';
+import genAI from '../../utils';
+(globalThis as any).File = NodeFile
 
 const ApiKey = process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY || ''
 
@@ -20,18 +21,21 @@ const prePrompt = `You are an English teacher, you will communicate with learner
 
 class ChatController {
   public async chatOpenAi(req: Request, res: Response) {
-    const { message, messages } = req.body
+    const { message, messages, userId, sessionId } = req.body
 
     try {
       // Support both old format (single message) and new format (messages array)
       let conversationMessages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
+      let userMessage = ''
 
       if (messages && Array.isArray(messages)) {
         // New format: use conversation history
         conversationMessages = messages
+        userMessage = messages[messages.length - 1]?.content || ''
       } else if (message) {
         // Old format: single message (backward compatibility)
         conversationMessages = [{ role: 'user', content: message }]
+        userMessage = message
       } else {
         res.status(400).json({ error: 'No message or messages provided' })
         return
@@ -48,7 +52,39 @@ class ChatController {
         ]
       })
 
-      res.status(HTTP_STATUS.OK).json({ reply: completion.choices[0].message.content })
+      const assistantReply = completion.choices[0]?.message?.content || ''
+
+      // Lưu messages vào database nếu có userId và có content
+      if (userId && userMessage && assistantReply) {
+        // Lưu tuần tự để đảm bảo timestamp đúng thứ tự
+        await prisma.chatMessage.create({
+          data: {
+            content: userMessage,
+            role: 'user',
+            userId,
+            sessionId: sessionId || null
+          }
+        })
+
+        await prisma.chatMessage.create({
+          data: {
+            content: assistantReply,
+            role: 'assistant',
+            userId,
+            sessionId: sessionId || null
+          }
+        })
+
+        console.log('✅ Chat messages saved successfully')
+      } else {
+        console.log('⚠️ Skipping save - missing data:', {
+          userId,
+          hasUserMessage: !!userMessage,
+          hasAssistantReply: !!assistantReply
+        })
+      }
+
+      res.status(HTTP_STATUS.OK).json({ reply: assistantReply })
     } catch (error) {
       console.error(error)
       res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'OpenAI Error' })
@@ -56,7 +92,7 @@ class ChatController {
   }
 
   public async chatGemini(req: Request, res: Response) {
-    const { message, messages } = req.body
+    const { message, messages, userId, sessionId } = req.body
     try {
       // Support both old format (single message) and new format (messages array)
       let history: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = []
@@ -98,7 +134,37 @@ class ChatController {
         message: currentMessage
       })
 
-      const reply = result.text
+      const reply = result.text || ''
+
+      // Lưu messages vào database nếu có userId và có content
+      if (userId && currentMessage && reply) {
+        // Lưu tuần tự để đảm bảo timestamp đúng thứ tự
+        await prisma.chatMessage.create({
+          data: {
+            content: currentMessage,
+            role: 'user',
+            userId,
+            sessionId: sessionId || null
+          }
+        })
+
+        await prisma.chatMessage.create({
+          data: {
+            content: reply,
+            role: 'assistant',
+            userId,
+            sessionId: sessionId || null
+          }
+        })
+
+        console.log('✅ Chat messages saved successfully (Gemini)')
+      } else {
+        console.log('⚠️ Skipping save (Gemini) - missing data:', {
+          userId,
+          hasCurrentMessage: !!currentMessage,
+          hasReply: !!reply
+        })
+      }
 
       res.status(HTTP_STATUS.OK).json({ reply })
     } catch (error) {
@@ -195,6 +261,105 @@ class ChatController {
     } catch (error) {
       console.error(error)
       res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'OpenAI Error' })
+    }
+  }
+
+  // Chat history management
+  public async getChatHistory(req: Request, res: Response) {
+    const { userId } = req.params
+    const { sessionId, limit = 50 } = req.query
+
+    try {
+      const where: any = { userId }
+      if (sessionId) {
+        where.sessionId = sessionId
+      }
+
+      const messages = await prisma.chatMessage.findMany({
+        where,
+        orderBy: { createdAt: 'asc' },
+        take: Number(limit)
+      })
+
+      res.status(HTTP_STATUS.OK).json(messages)
+    } catch (error) {
+      console.error(error)
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to get chat history' })
+    }
+  }
+
+  public async deleteChatHistory(req: Request, res: Response) {
+    const { userId } = req.params
+    const { sessionId } = req.body
+
+    try {
+      const where: any = { userId }
+      if (sessionId) {
+        where.sessionId = sessionId
+      }
+
+      await prisma.chatMessage.deleteMany({ where })
+
+      res.status(HTTP_STATUS.OK).json({ message: 'Chat history deleted' })
+    } catch (error) {
+      console.error(error)
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to delete chat history' })
+    }
+  }
+
+  // Get user statistics
+  public async getUserStats(req: Request, res: Response) {
+    const { userId } = req.params
+
+    try {
+      // Count unique searched words
+      const searchedWordsCount = await prisma.searchedWord.count({
+        where: { userId }
+      })
+
+      // Count unique conversation sessions
+      const conversationsCount = await prisma.chatMessage.groupBy({
+        by: ['sessionId'],
+        where: { userId, sessionId: { not: null } }
+      })
+
+      // Count messages by date to calculate streak
+      const messages = await prisma.chatMessage.findMany({
+        where: { userId },
+        select: { createdAt: true },
+        orderBy: { createdAt: 'desc' }
+      })
+
+      // Calculate consecutive days streak
+      let streak = 0
+      if (messages.length > 0) {
+        const dates = messages.map((m) => new Date(m.createdAt).toISOString().split('T')[0])
+        const uniqueDates = [...new Set(dates)].sort().reverse()
+
+        // Start from today
+        const today = new Date().toISOString().split('T')[0]
+        let currentDate = new Date()
+
+        for (const dateStr of uniqueDates) {
+          const checkDate = new Date(currentDate).toISOString().split('T')[0]
+          if (dateStr === checkDate) {
+            streak++
+            // Move to previous day
+            currentDate.setDate(currentDate.getDate() - 1)
+          } else {
+            break
+          }
+        }
+      }
+
+      res.status(HTTP_STATUS.OK).json({
+        wordsLearned: searchedWordsCount,
+        conversations: conversationsCount.length,
+        streak
+      })
+    } catch (error) {
+      console.error(error)
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to get user stats' })
     }
   }
 }
