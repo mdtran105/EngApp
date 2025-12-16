@@ -16,7 +16,4 @@ chatRoute.post('/whisper', upload.single('file'), chatController.whisper)
 chatRoute.get('/history/:userId', chatController.getChatHistory)
 chatRoute.delete('/history/:userId', chatController.deleteChatHistory)
 
-// User stats
-chatRoute.get('/stats/:userId', chatController.getUserStats)
-
 export default chatRoute

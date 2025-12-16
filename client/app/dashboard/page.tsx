@@ -37,7 +37,7 @@ export default function Dashboard() {
 					const { API_DOMAIN } = await import("@/lib/config");
 
 					const response = await fetch(
-						`${API_DOMAIN}/api/chat/stats/${userId}`
+						`${API_DOMAIN}/api/users/stats/${userId}`
 					);
 					if (response.ok) {
 						const statsData = await response.json();

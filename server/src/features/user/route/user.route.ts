@@ -7,4 +7,7 @@ const userRoute = express.Router()
 userRoute.post('/', userController.createUser)
 userRoute.get('/:userId', userController.getUserById)
 
+// User statistics
+userRoute.get('/stats/:userId', userController.getUserStats)
+
 export default userRoute
