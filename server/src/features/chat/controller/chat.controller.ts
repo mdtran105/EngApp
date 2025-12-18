@@ -74,8 +74,6 @@ class ChatController {
             sessionId: sessionId || null
           }
         })
-
-        console.log('✅ Chat messages saved successfully')
       } else {
         console.log('⚠️ Skipping save - missing data:', {
           userId,

@@ -18,7 +18,7 @@ export const useRecordAudio = (isContinuousMode: boolean = false) => {
 	const compressorRef = useRef<DynamicsCompressorNode | null>(null);
 	const gainNodeRef = useRef<GainNode | null>(null);
 
-	const SILENCE_THRESHOLD = 40; // Volume threshold adjusted for compressed audio
+	const SILENCE_THRESHOLD = 30; // Volume threshold adjusted for compressed audio
 	const SILENCE_DURATION = 1500; // Must be silent for 1.5 seconds before stopping
 	const MIN_SPEAKING_TIME = 500; // Minimum time to speak before silence detection starts
 	const speakingStartTimeRef = useRef<number>(0);
@@ -63,7 +63,7 @@ export const useRecordAudio = (isContinuousMode: boolean = false) => {
 
 		let silenceDuration = 0;
 		let consecutiveSilentChecks = 0;
-		const CHECKS_NEEDED = 2; // Need 2 consecutive silent checks before counting
+		const CHECKS_NEEDED = 1; // Need 1 consecutive silent check before counting
 
 		silenceIntervalRef.current = setInterval(() => {
 			if (!analyserRef.current || !mediaRecorderRef.current) {
@@ -119,12 +119,12 @@ export const useRecordAudio = (isContinuousMode: boolean = false) => {
 			// Improved audio constraints for better quality
 			const stream = await navigator.mediaDevices.getUserMedia({
 				audio: {
-					echoCancellation: true,
-					noiseSuppression: true,
-					autoGainControl: false, // Disable browser AGC, we'll use our own compressor
-					sampleRate: 48000,
-					sampleSize: 16,
-					channelCount: 1,
+					echoCancellation: true, // Khử tiếng vọng
+					noiseSuppression: true, // Giảm nhiễu
+					autoGainControl: false, // Tắt tự động điều chỉnh âm lượng
+					sampleRate: 48000, // Tần số lấy mẫu (48kHz = chất lượng cao)
+					sampleSize: 16, // 16-bit audio
+					channelCount: 1, // Mono (1 kênh)
 				},
 			});
 			streamRef.current = stream;
@@ -137,7 +137,7 @@ export const useRecordAudio = (isContinuousMode: boolean = false) => {
 			// Create audio nodes
 			const source = audioContext.createMediaStreamSource(stream);
 
-			// Add dynamic range compressor to even out volume levels
+			// Compressor - Cân bằng âm lượng
 			const compressor = audioContext.createDynamicsCompressor();
 			compressor.threshold.value = -50; // Start compressing at -50dB
 			compressor.knee.value = 40; // Smooth compression curve
@@ -168,7 +168,7 @@ export const useRecordAudio = (isContinuousMode: boolean = false) => {
 			// The original stream is still recorded by MediaRecorder
 
 			// Choose best available audio format with fallback
-			let mimeType = "audio/webm;codecs=opus";
+			let mimeType = "audio/webm;codecs=opus"; // OPUS codec - nén tốt, chất lượng cao
 			if (!MediaRecorder.isTypeSupported(mimeType)) {
 				if (MediaRecorder.isTypeSupported("audio/webm")) {
 					mimeType = "audio/webm";
@@ -187,10 +187,10 @@ export const useRecordAudio = (isContinuousMode: boolean = false) => {
 
 			mediaRecorderRef.current = new MediaRecorder(stream, recorderOptions);
 			audioChunksRef.current = [];
-
+			// Lưu chunks âm thanh vào array
 			mediaRecorderRef.current.ondataavailable = (event) => {
 				if (event.data.size > 0) {
-					audioChunksRef.current.push(event.data);
+					audioChunksRef.current.push(event.data); // Mỗi chunk là một Blob
 				}
 			};
 
@@ -198,6 +198,8 @@ export const useRecordAudio = (isContinuousMode: boolean = false) => {
 				// Use the actual mimeType that was recorded
 				const recordedMimeType =
 					mediaRecorderRef.current?.mimeType || "audio/webm";
+
+				// Ghép tất cả chunks thành 1 Blob
 				const audioBlob = new Blob(audioChunksRef.current, {
 					type: recordedMimeType,
 				});
@@ -211,12 +213,13 @@ export const useRecordAudio = (isContinuousMode: boolean = false) => {
 
 				const urlApi = new URL(`${API_DOMAIN}/api/chat/whisper`);
 
+				// Tạo FormData để upload
 				const formData = new FormData();
 				formData.append("file", audioBlob, "speech.webm");
 				try {
 					const res = await fetch(urlApi.toString(), {
 						method: "POST",
-						body: formData,
+						body: formData, // Gửi binary data
 					});
 					const data = await res.json();
 					setTranscriptApi(data.transcript);

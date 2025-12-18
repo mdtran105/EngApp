@@ -39,7 +39,7 @@ export default function ChatInput({
 	// Auto-send logic for continuous mode
 	useEffect(() => {
 		if (isContinuousMode && !isProcessing && !isListening) {
-			const finalMessage = message.trim() || transcriptApi.trim();
+			const finalMessage = message.trim() || (transcriptApi?.trim() ?? "");
 
 			if (finalMessage) {
 				// Clear previous timer
