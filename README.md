@@ -1,66 +1,241 @@
-# English101: AI-powered English Learning Platform
+# English101: Nền tảng Học Tiếng Anh với AI
 
-English101 is a modern web application designed to help Vietnamese learners improve their English skills through interactive AI-powered features. The platform provides smart dictionary lookups, AI chat for speaking practice, writing evaluation, and assignment generation, all tailored to the user's proficiency level.
+English101 là ứng dụng web hiện đại giúp người học Việt Nam cải thiện kỹ năng tiếng Anh thông qua các tính năng tương tác được hỗ trợ bởi AI. Nền tảng cung cấp từ điển thông minh, trò chuyện với AI tutor, luyện phát âm, và quản lý từ vựng cá nhân hóa theo trình độ người học.
 
-## Features
+## ✨ Tính năng chính
 
-- **Smart Dictionary**: Look up words, idioms, and phrasal verbs with context-aware explanations, IPA, and audio pronunciation.
-- **AI Chat Tutor**: Practice English conversation with an AI tutor (powered by GPT-4), which always responds in English to help improve speaking and reflexes.
-- **Writing Practice**: Submit essays and receive instant feedback and scoring.
-- **Assignment Generator**: Create and solve English assignments based on your level and interests.
-- **Personalized Experience**: Onboarding flow to collect user info and adapt content accordingly.
-- **Modern UI/UX**: Responsive, dark mode, and beautiful design using Tailwind CSS and ShadCN UI.
+- **Từ điển thông minh (Smart Dictionary)**: Tra cứu từ vựng, thành ngữ với giải thích có ngữ cảnh, phiên âm IPA và phát âm bằng giọng nói tự nhiên
+- **AI Chat Tutor**: Luyện đối thoại tiếng Anh với AI tutor (Google Gemini), luôn phản hồi bằng tiếng Anh để cải thiện phản xạ ngôn ngữ
+- **Quản lý từ vựng**: Lưu lịch sử từ đã tra, xem từ tra nhiều nhất, theo dõi tiến trình học tập
+- **Lịch sử hội thoại**: Lưu trữ và xem lại các cuộc hội thoại với AI theo session
+- **Xác thực người dùng**: Đăng ký, đăng nhập với mã hóa mật khẩu (bcrypt) và JWT
+- **Giao diện hiện đại**: Responsive, hỗ trợ dark mode, thiết kế đẹp với Tailwind CSS và ShadCN UI
 
-## Technology Stack
+## 🛠️ Công nghệ sử dụng
 
-- **Frontend**: Next.js, React, TypeScript, Tailwind CSS, ShadCN UI, Radix UI
-- **Backend**: Node.js, Express.js
-- **AI Models**:
-  - **Chat**: Google Gemini (as English tutor)
-  - **Dictionary & Translation**: Google Gemini (Generative AI) for context-aware explanations and translation
-- **Other**: LocalStorage for user preferences, RESTful API, ESLint, Prettier
+### Frontend
 
-## Getting Started
+- **Framework**: Next.js 15 (App Router), React 19, TypeScript
+- **UI Components**: ShadCN UI, Radix UI, Lucide Icons
+- **Styling**: Tailwind CSS, Framer Motion
+- **Form Management**: React Hook Form, Zod validation
+- **Speech**: React Speech Recognition, Browser TTS API
+- **Markdown**: React Markdown với GitHub Flavored Markdown
 
-### Prerequisites
+### Backend
 
-- Node.js (v18+ recommended)
-- npm (v9+ recommended)
+- **Runtime**: Node.js với TypeScript
+- **Framework**: Express.js
+- **Database**: SQLite với Prisma ORM
+- **Authentication**: JWT (jsonwebtoken), bcrypt
+- **AI Integration**:
+  - Google Gemini AI (@google/genai) - Chat tutor & Dictionary
+  - ElevenLabs (elevenlabs-js) - Text-to-Speech chất lượng cao
+- **File Upload**: Multer
+- **CORS & Cookie**: cors, cookie-parser
 
-### Setup & Run Locally
+### DevOps & Tools
 
-1. **Clone the repository:**
-   ```bash
-   git clone <your-repo-url>
-   cd english-chatbot
-   ```
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
-3. **Configure environment variables:**
+- **Package Manager**: pnpm
+- **Linting**: ESLint, Prettier
+- **Dev Tools**: Nodemon, ts-node
 
-   - Copy `.env.example` to `.env` and update API keys if needed (e.g., `NEXT_PUBLIC_API_DOMAIN`, Gemini API key, OpenAI API key for backend).
+## 📋 Yêu cầu hệ thống
 
-4. **Start the development server:**
+- **Node.js**: v18 trở lên
+- **pnpm**: v8 trở lên (hoặc npm v9+)
+- **Database**: SQLite (tự động tạo)
 
-   ```bash
-   npm run dev
-   ```
+## 🚀 Hướng dẫn cài đặt
 
-   The app will be available at [http://localhost:3000](http://localhost:3000)
+### 1. Clone repository
 
-5. **(Optional) Start the backend server:**
-   - Go to the `server/` directory and follow its README/setup instructions if you want to run the backend locally.
+```bash
+git clone <repository-url>
+cd english-chatbot-main
+```
 
-## Project Structure
+### 2. Cài đặt Backend
 
-- `client/` – Frontend source code (Next.js, React, UI components)
-- `server/` – Backend API (Express.js, AI integration)
-- `public/` – Static assets
-- `README.md` – Project documentation
+```bash
+cd server
+pnpm install
 
-## Model & AI Integration
+# Tạo file .env và cấu hình
+cp .env.example .env
+# Cập nhật các biến môi trường:
+# - DATABASE_URL="file:./dev.db"
+# - GEMINI_API_KEY=your_gemini_api_key
+# - ELEVENLABS_API_KEY=your_elevenlabs_api_key (optional)
+# - JWT_SECRET=your_jwt_secret
+# - PORT=3001
 
-- **Chat**: Uses Google Gemini to simulate an English tutor, always responding in English and focusing on speaking practice.
-- **Dictionary & Translation**: Uses Google Gemini (Generative AI) to provide context-aware, Vietnamese explanations, IPA, and audio.
+# Chạy migrations để tạo database
+npx prisma migrate dev
+
+# Khởi động server
+pnpm dev
+```
+
+Server sẽ chạy tại `http://localhost:3001`
+
+### 3. Cài đặt Frontend
+
+```bash
+cd client
+pnpm install
+
+# Tạo file .env.local và cấu hình
+cp .env.example .env.local
+# Cập nhật:
+# NEXT_PUBLIC_API_DOMAIN=http://localhost:3001
+
+# Khởi động ứng dụng
+pnpm dev
+```
+
+Ứng dụng sẽ chạy tại `http://localhost:3000`
+
+## 📁 Cấu trúc dự án
+
+```
+english-chatbot-main/
+├── client/                 # Frontend (Next.js)
+│   ├── app/               # App Router pages
+│   │   ├── auth/          # Trang đăng nhập/đăng ký
+│   │   ├── chat/          # Chat với AI tutor
+│   │   ├── dashboard/     # Dashboard người dùng
+│   │   └── dictionary/    # Tra từ điển
+│   ├── components/        # Shared components
+│   ├── contexts/          # React contexts (Theme, TTS)
+│   ├── hooks/             # Custom hooks
+│   └── lib/               # Utilities, services
+│
+├── server/                # Backend (Express.js)
+│   ├── prisma/            # Database schema & migrations
+│   │   └── schema.prisma  # Prisma schema
+│   └── src/
+│       ├── features/      # Feature modules
+│       │   ├── auth/      # Authentication APIs
+│       │   ├── chat/      # Chat APIs
+│       │   ├── dictionary/# Dictionary APIs
+│       │   ├── tts/       # Text-to-Speech APIs
+│       │   └── user/      # User management APIs
+│       ├── lib/           # Prisma client
+│       └── middlewares/   # Express middlewares
+│
+├── DATABASE_SETUP.md      # Hướng dẫn database
+└── README.md             # File này
+```
+
+## 🔌 API Endpoints
+
+### Authentication
+
+- `POST /api/auth/register` - Đăng ký tài khoản
+- `POST /api/auth/login` - Đăng nhập
+- `GET /api/auth/me` - Lấy thông tin user hiện tại
+- `POST /api/auth/logout` - Đăng xuất
+
+### Chat
+
+- `POST /api/chat` - Chat với AI tutor
+- `GET /api/chat/history/:userId` - Lấy lịch sử chat
+- `DELETE /api/chat/history/:userId` - Xóa lịch sử chat
+
+### Dictionary
+
+- `POST /api/dictionary/lookup` - Tra từ
+- `GET /api/dictionary/history/:userId` - Lấy từ đã tra
+- `GET /api/dictionary/history/:userId/most-searched` - Từ tra nhiều nhất
+- `DELETE /api/dictionary/history/:userId/:word` - Xóa từ đã tra
+
+### Text-to-Speech
+
+- `POST /api/tts` - Chuyển text thành giọng nói
+
+### User
+
+- `POST /api/user` - Tạo user mới
+- `GET /api/user/:userId` - Lấy thông tin user
+- `PATCH /api/user/:userId` - Cập nhật thông tin user
+
+## 🗄️ Database Schema
+
+### User
+
+- `id`: UUID (Primary Key)
+- `name`: Tên người dùng
+- `email`: Email (unique)
+- `password`: Mật khẩu đã hash
+- `level`: Trình độ (beginner/intermediate/advanced)
+- `isAnonymous`: User ẩn danh hay đã đăng ký
+- `createdAt`, `updatedAt`: Timestamps
+
+### ChatMessage
+
+- `id`: UUID (Primary Key)
+- `content`: Nội dung tin nhắn
+- `role`: user/assistant
+- `userId`: Foreign Key → User
+- `sessionId`: ID phiên chat (optional)
+- `createdAt`: Timestamp
+
+### SearchedWord
+
+- `id`: UUID (Primary Key)
+- `word`: Từ đã tra
+- `definition`: Định nghĩa (optional)
+- `userId`: Foreign Key → User
+- `searchCount`: Số lần tra
+- `lastSearched`: Lần tra gần nhất
+- `createdAt`: Timestamp
+
+## 🤖 Tích hợp AI
+
+### Google Gemini AI
+
+- **Chat Tutor**: Sử dụng Gemini để tạo AI tutor thông minh, luôn phản hồi bằng tiếng Anh, điều chỉnh độ khó theo level người học
+- **Dictionary**: Cung cấp giải thích từ vựng có ngữ cảnh, ví dụ, phiên âm IPA, và dịch sang tiếng Việt
+
+### ElevenLabs TTS
+
+- Chuyển đổi text thành giọng nói tự nhiên với chất lượng cao
+- Hỗ trợ nhiều giọng đọc khác nhau
+
+## 📝 Scripts
+
+### Backend (server/)
+
+```bash
+pnpm dev          # Chạy development server với nodemon
+pnpm build        # Build TypeScript
+pnpm start        # Chạy production server
+pnpm lint         # Kiểm tra code
+pnpm lint:fix     # Fix linting issues
+```
+
+### Frontend (client/)
+
+```bash
+pnpm dev          # Chạy development server
+pnpm build        # Build production
+pnpm start        # Chạy production server
+pnpm lint         # Kiểm tra code
+```
+
+## 🔐 Bảo mật
+
+- Mật khẩu được hash bằng bcrypt (salt rounds: 10)
+- Xác thực bằng JWT với HTTP-only cookies
+- CORS được cấu hình cho các domain được phép
+- Input validation với Zod schema
+- SQL injection được ngăn chặn bởi Prisma ORM
+
+## 📚 Tài liệu bổ sung
+
+- [DATABASE_SETUP.md](DATABASE_SETUP.md) - Chi tiết về database setup và migrations
+
+---
+
+**Lưu ý**: Đảm bảo bạn đã cấu hình đúng các API keys (Gemini, ElevenLabs) trong file `.env` trước khi chạy ứng dụng.
